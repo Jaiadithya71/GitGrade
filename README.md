@@ -1,6 +1,7 @@
 # GitGrade
 
 An intelligent GitHub repository analyzer powered by Google's Gemini AI. Simply input a GitHub repository URL and receive a comprehensive analysis including code quality scoring, strengths, weaknesses, and a personalized development roadmap.
+Hosted on vercel (link) : https://gitgradedeploy.vercel.app/
 
 ## Features
 
