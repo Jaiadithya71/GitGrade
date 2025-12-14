@@ -1,12 +1,56 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { AnalysisResult, RepoContext } from '../types';
 
-// Initialize Gemini
-// NOTE: process.env.API_KEY is expected to be available in the environment.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Get API key from environment
+const getApiKey = () => {
+  // @ts-ignore - Vite exposes env vars via import.meta.env
+  return import.meta.env.VITE_API_KEY || "";
+};
 
 export const analyzeRepo = async (context: RepoContext): Promise<AnalysisResult> => {
-  const model = "gemini-2.5-flash";
+  const apiKey = getApiKey();
+  
+  if (!apiKey) {
+    throw new Error("API key is missing. Please add VITE_API_KEY to your .env file");
+  }
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ 
+    model: "gemini-2.5-flash",
+    systemInstruction: "You are GitGrade, an expert code reviewer and technical hiring manager. You judge repositories strictly but fairly. You prioritize clean architecture, testing, and good documentation.",
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: SchemaType.OBJECT,
+        properties: {
+          score: { type: SchemaType.NUMBER },
+          level: { type: SchemaType.STRING },
+          summary: { type: SchemaType.STRING },
+          strengths: {
+            type: SchemaType.ARRAY,
+            items: { type: SchemaType.STRING }
+          },
+          weaknesses: {
+            type: SchemaType.ARRAY,
+            items: { type: SchemaType.STRING }
+          },
+          roadmap: {
+            type: SchemaType.ARRAY,
+            items: {
+              type: SchemaType.OBJECT,
+              properties: {
+                title: { type: SchemaType.STRING },
+                description: { type: SchemaType.STRING },
+                priority: { type: SchemaType.STRING }
+              },
+              required: ["title", "description", "priority"]
+            }
+          }
+        },
+        required: ["score", "level", "summary", "strengths", "weaknesses", "roadmap"]
+      }
+    }
+  });
 
   // Construct a prompt that feeds the repo data to the model
   const prompt = `
@@ -38,45 +82,12 @@ export const analyzeRepo = async (context: RepoContext): Promise<AnalysisResult>
     - A Personalized Roadmap with actionable items.
   `;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      systemInstruction: "You are GitGrade, an expert code reviewer and technical hiring manager. You judge repositories strictly but fairly. You prioritize clean architecture, testing, and good documentation.",
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          score: { type: Type.NUMBER },
-          level: { type: Type.STRING },
-          summary: { type: Type.STRING },
-          strengths: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING }
-          },
-          weaknesses: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING }
-          },
-          roadmap: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING },
-                description: { type: Type.STRING },
-                priority: { type: Type.STRING }
-              }
-            }
-          }
-        },
-        required: ["score", "level", "summary", "strengths", "weaknesses", "roadmap"]
-      }
-    }
-  });
+  const result = await model.generateContent(prompt);
+  const response = result.response;
+  const text = response.text();
 
-  if (response.text) {
-    return JSON.parse(response.text) as AnalysisResult;
+  if (text) {
+    return JSON.parse(text) as AnalysisResult;
   }
 
   throw new Error("Failed to generate analysis");
